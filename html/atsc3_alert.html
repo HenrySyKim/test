@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to ATSC3.0!</title>
+<style>
+    body {        
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+ <script type="text/javascript">
+    var keydown = function(evt) {
+        console.log("app1 keydown " + evt.keyCode);
+		text = new Date() + "              app1 keydown " + evt.keyCode + "\n" + text;
+		textComp.innerText = text;
+    }
+
+    document.addEventListener("keydown", keydown);
+
+    var ws;
+    var wsb;
+    var textComp;
+    var alertComp;
+    var webSocketUrl;
+    var text = "";
+    var displayInfo = "";
+    var sendMsg = function() {
+    	ws.send(JSON.stringify({"message":"sendMsg", "sourceDeviceId":"test" }));
+    }
+    
+    var connectWSATSC = function() {
+        wsb = new WebSocket(webSocketUrl+'/atscCmd');
+        wsb.onopen = function () {
+            console.log('connectWSATSC is connected ...' + new Date());
+			var connect = document.getElementById("connect");
+			connect.innerText = "WebSocket connection with ATSC3.0 receiver is connected."
+            connected = true;
+            requestKeys();
+			subscribe();
+        }
+        // event emmited when receiving message
+        wsb.onmessage = function (ev) {
+            console.log(ev);
+          var message = JSON.parse(ev.data);
+
+	      if (message.id) {
+
+	      } else { //Notification            	  
+        	notifyCallback(message);        
+          }
+	    }
+    	wsb.onclose = function() {
+    		console.log("connectWSATSC closed " + new Date());
+    	}
+    }
+    
+    var notifyCallback = function(msg) {
+    	if (msg["method"] == "org.atsc.notify") {
+        	if (msg["params"] && msg["params"]["msgType"] == "alertingChange") {
+	          var alerts  = [];
+    	      var parser = new DOMParser();
+        	  var alertList = msg["params"]["alertList"];
+	          if (!alertList || alertList.length == 0) {
+    	        setAlert(undefined);
+        	    return;
+	          }
+    	      for (var i=0; i<alertList.length; i++) {
+	
+    	        if (!alertList[i]["alertingFragment"]) {
+        	      setAlert(undefined);
+            	  return;
+            	}
+
+            	alerts.push(parser.parseFromString(alertList[i]["alertingFragment"],"text/xml"));
+            	setAlert(alerts);
+          	  }
+        }
+      }
+    }
+    
+    var setAlert = function(alerts) {
+    	if (alerts == undefined)
+    		alertComp.style.display = "none";
+    	else {
+	    	drawAlert(alerts);
+    		alertComp.style.display = "";
+    		alertComp.innerText = displayInfo;
+    	}
+    }
+    var drawAlert = function(alertXmls) {
+
+      // draw alertComp;
+      for (var i=0; i<alertXmls.length; i++) {
+        if (alertXmls[i].children[0].nodeName == "AEAT") {
+          addInfo("<AEAT>");
+          var AEA = alertXmls[i].children[0].children; 
+          for (var j=0; j<AEA.length; j++) {
+            addInfo("    <AEA>");
+            addInfo("        @aeaId: " + AEA[j].getAttribute("aeaId"));
+            addInfo("        @issuer: " + AEA[j].getAttribute("issuer"));
+            addInfo("        @audience: " + AEA[j].getAttribute("audience"));
+            addInfo("        @refAEAId: " + AEA[j].getAttribute("refAEAId"));
+            addInfo("        @priority: " + AEA[j].getAttribute("priority"));
+            addInfo("        @wakeup: " + AEA[j].getAttribute("wakeup"));
+            addInfo("        <Header> ");
+            var Header = AEA[j].getElementsByTagName("Header")[0];
+            addInfo("            @effective: " + Header.getAttribute("effective"));
+            addInfo("            @expires: " + Header.getAttribute("expires"));
+            addInfo("            <EventCode>");
+            var EventCode = Header.getElementsByTagName("EventCode")[0];
+            if (EventCode) {
+              addInfo("                " + EventCode.innerHTML);
+              addInfo("                @type: " + EventCode.getAttribute("type"));
+            }
+            
+            var EventDesc = Header.getElementsByTagName("EventDesc");
+            for (var k=0; k<EventDesc.length; k++) {
+              addInfo("            <EventDesc>");
+              addInfo("                " + EventDesc[k].innerHTML);
+              if (EventDesc[k].getAttribute("lang"))
+                addInfo("                @lang: " + EventDesc[k].getAttribute("lang"));
+              if (EventDesc[k].getAttribute("xml:lang"))
+                addInfo("                @xml:lang: " + EventDesc[k].getAttribute("xml:lang"));
+            }
+            
+            var Location = Header.getElementsByTagName("Location");
+            for (var k=0; k<Location.length; k++) {
+              addInfo("            <Location>");
+              addInfo("                " + Location[k].innerHTML);
+              addInfo("                @type: " + Location[k].getAttribute("type"));
+            }
+            
+            var AEAText = AEA[j].getElementsByTagName("AEAText");
+            for (var k=0; k<AEAText.length; k++) {
+              addInfo("        <AEAText> ");
+              addInfo("            " + AEAText[k].innerHTML); 
+              if (AEAText[k].getAttribute("lang"))
+                addInfo("            @lang:" + AEAText[k].getAttribute("lang"));
+              if (AEAText[k].getAttribute("xml:lang"))
+                addInfo("            @xml:lang:" + AEAText[k].getAttribute("xml:lang"));
+            }
+            
+            var LiveMedia = AEA[j].getElementsByTagName("LiveMedia")[0];
+            if (LiveMedia) {
+              addInfo("        <LiveMedia> ");
+              addInfo("            @bsid: " + LiveMedia.getAttribute("bsid")); 
+              addInfo("            @serviceId: " + LiveMedia.getAttribute("serviceId"));  
+              addInfo("            <ServiceName> ");
+              var ServiceName = LiveMedia.getElementsByTagName("ServiceName");
+              for (var k=0; k<ServiceName.length; k++) {
+                if (ServiceName[k].getAttribute("lang"))
+                  addInfo("                @lang: " + ServiceName[k].getAttribute("lang")); 
+                if (ServiceName[k].getAttribute("xml:lang")) 
+                  addInfo("                @xml:lang: " + ServiceName[k].getAttribute("xml:lang"));
+              }
+            }
+            
+            var Media = AEA[j].getElementsByTagName("Media");
+            for (var k=0; k<Media.length; k++) {
+              addInfo("        <Media> ");
+              if (Media[k].getAttribute("lang"))
+                addInfo("            @lang: " + Media[k].getAttribute("lang"));  
+              if (Media[k].getAttribute("xml:lang"))
+                addInfo("            @xml:lang: " + Media[k].getAttribute("xml:lang"));  
+              addInfo("            @mediaDesc: " + Media[k].getAttribute("mediaDesc"));  
+              addInfo("            @mediaType: " + Media[k].getAttribute("mediaType"));  
+              addInfo("            @url: " + Media[k].getAttribute("url")); 
+              addInfo("            @alternateUrl: " + Media[k].getAttribute("alternateUrl")); 
+              addInfo("            @contentType: " + Media[k].getAttribute("contentType")); 
+              addInfo("            @contentLength: " + Media[k].getAttribute("contentLength")); 
+              addInfo("            @mediaAssoc: " + Media[k].getAttribute("mediaAssoc")); 
+            }  
+          } 
+        } else if (alertXmls[i].children[0].nodeName == "OSN") {
+          addInfo("<OnscreenMessageNotification>");
+          var KeepScreenClear = alertXmls[i].children[0].children;
+          for (var j=0; j<KeepScreenClear.length; j++) {
+            addInfo("    <KeepScreenClear>"); 
+            addInfo("        bsid:" + KeepScreenClear[j].getAttribute("bsid"));  
+            addInfo("        serviceId:" + KeepScreenClear[j].getAttribute("serviceId"));
+            addInfo("        serviceIdRange:" + KeepScreenClear[j].getAttribute("serviceIdRange"));
+            addInfo("        notificationDuration:" + KeepScreenClear[j].getAttribute("notificationDuration"));
+            addInfo("        kscFlag:" + KeepScreenClear[j].getAttribute("kscFlag"));
+            addInfo("        version:" + KeepScreenClear[j].getAttribute("version"));
+          } 
+        }
+      }
+    };    
+    var addInfo = function(text) {
+      displayInfo += text + "\n";
+    };
+    
+    var subscribe = function() {
+    	var message =  {
+                jsonrpc: "2.0",
+                method: "org.atsc.subscribe",
+                params: { msgType: ["alertingChange"] },
+                id: 1001
+              }
+		wsb.send(JSON.stringify(message));
+    }
+    var requestKeys = function() {
+		var message =  {
+                jsonrpc: "2.0",
+                method: "org.atsc.request.keys",
+                params: { keys: ["Enter"] },
+                id: 1000
+              }
+		wsb.send(JSON.stringify(message));
+		
+		text = "Enter key requested";
+		textComp.innerText = text;
+    }
+    
+	function getQueries() {
+       	var params = window.location.search.substring(1);
+       	var result = {};
+       	params.split("&").some(function (part) {
+        	var item = part.split("=");
+        	result[item[0]] = decodeURIComponent(item[1]);
+       	})
+       	return result;
+	}
+    
+    var load = function() {
+    
+    	var Q = getQueries();
+        if (Q["wsURL"]) {
+            webSocketUrl = Q["wsURL"];
+        } else 
+        	webSocketUrl = "ws://localhost:8080";
+        	
+    	textComp = document.getElementById("text");
+    	alertComp = document.getElementById("eas");
+    	
+    	connectWSATSC();    	
+    }
+    </script>
+</head>
+<body onload="load();">
+<div style="left:0px,top:0px,width:1280px;height:120px;background-color:gray">
+<h1>Welcome to ATSC3.0!</h1>
+<p>If you see this page, the ATSC3.0 test app is successfully running</p>
+<p id="connect">WebSocket connection with ATSC3.0 receiver is not connected.</p>
+</div>
+<div id='text' style="display:none;left:0px;top:0px;width:500px;height:500px;color:rgb(230,230,230);background-color:rgb(0,0,0);">
+</div>
+<div id='eas' style="display:none;font-size:10px;left:0px;top:0px;width:500px;height:500px;color:rgb(230,230,230);background-color:rgb(0,0,0);">
+</div>
+</body>
+</html>
